@@ -1,0 +1,14 @@
+[Server]
+host = ''
+port = 6667
+name = 'Default'
+
+[Auth]
+method = 'none'
+pass   = ''
+
+[PlugIRC]
+permission = 'AigisPermissions'
+help       = 'Help'
+plugins[]  = 'Autojoin'
+plugins[]  = 'Misc'

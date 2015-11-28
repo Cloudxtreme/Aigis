@@ -36,7 +36,7 @@ function consoleSend($message, $source = 'NUL', $type = 'info'){
                                 $src = "??";
         }
         $fullmsg = "[" . @date("d/m H:i:s") . "] $src $typechars $message\n";
-        echo $fullmsg;
+        echo "Deprecated: ".$fullmsg;
 		return $fullmsg;
 }
 

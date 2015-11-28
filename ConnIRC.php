@@ -3,7 +3,7 @@
 class ConnIRC{
 
 // ConnIRC
-// Part of AigisIRC (https://github.com/Joaquin-V/AigisIRC)
+// Part of AigisBot (https://github.com/Joaquin-V/AigisBot)
 
 const SOCKET_TIMEOUT = 100000;
 
@@ -12,30 +12,32 @@ const ACTIVITY_TIMEOUT = 150;
 const RECONNECT_TIMEOUT = 7;
 const RECONNECT_DELAY = 10;
 
-private $AigisIRC	= null;
+private $AigisBot = null;
 
-private $network	= "";
-private $server		= "";
-private $port		= "";
-private $network001 = "";
+private $network  = "";
+private $server   = "";
+private $port     = "";
 
-private $hostmask	= "";
-private $nick		= "";
-private $ident		= "";
-private $host		= "";
+private $nicks       = array();
+private $currentNick = '';
 
-private $socket		= null;
+private $socket   = null;
 
-public function __construct(AigisIRC $AigisIRC, $network, $nick, $server, $port = 6667){
-	$this->AigisIRC = $AigisIRC;
-	$this->network	= $network;
-	$this->nick		= $nick;
-	$this->server	= $server;
-	$this->port		= $port;
+public function __construct(AigisBot $AigisBot){
+	$this->AigisBot = $AigisBot;
+
+	$config = $AigisBot->getConfig();
+	// Default to profile name for network.
+	$this->network = $AigisBot->getProfileName();
+
+	$this->server  = $config['Server']['host'];
+	$this->port    = $config['Server']['port'];
+	$this->nicks   = $config['Auth']['nicks'];
+	$this->currentNick = $this->nicks[0];
 }
 
 public function __destruct(){
-	$this->send("QUIT :It's important to keep someone in your thoughts, and to think that you are in theirs... And... to touch them... Just kidding.");
+	$this->send("QUIT");
 	fclose($this->socket);
 }
 
@@ -45,7 +47,7 @@ public function connect(){
 		fclose($this->socket);
 
 	// Attempt to open the socket.
-	consoleSend("Connecting to $this->server:$this->port...", "ConnIRC");
+	$this->AigisBot->consoleSend("Connecting to $this->server:$this->port...", "ConnIRC");
 	$this->socket = @fsockopen($this->server, $this->port);
 
 	// If the connection fails.
@@ -55,14 +57,14 @@ public function connect(){
 	}
 	// If the connection succeeds.
 	else{
-		$this->AigisIRC->setAigisVar("lastConn", time());
+		$this->AigisBot->setAigisVar("lastConn", time());
 
 		// Send a PASS command.
-		$this->send("PASS ".$this->AigisIRC->getAigisVar("nsPass"));
+		$this->send("PASS ".$this->AigisBot->getConfig()['Auth']['pass']);
 		// Set nick.
-		$this->send("NICK $this->nick");
+		$this->send("NICK ".$this->currentNick);
 		// Send the USER command
-		$this->send("USER AigisIRC localhost $this->server :AigisIRC");
+		$this->send("USER AigisBot localhost $this->server :AigisBot");
 	}
 }
 
@@ -72,7 +74,7 @@ public function disconnect(){
 }
 
 public function connected(){
-	if(@get_resource_type($this->socket) === "stream")
+	if(is_resource($this->socket) and @get_resource_type($this->socket) === "stream")
 		return true;
 	else return false;
 }
@@ -90,43 +92,60 @@ public function read(){
 		return null;
 }
 
-public function parseRaw(MessIRC $MessIRC){
-	switch($MessIRC->getRaw()){
-		case 001:
-		$this->AigisIRC->setAigisVar("lastRegg", time());
-		// Successful connection.
-		if(preg_match('/Welcome to the (\w*) [\QInternet Relay Chat\E|IRC]* Network (.*)/', $MessIRC->getMessage(), $match)){
-			$this->network001 = $match[1];
-			if(preg_match('/(.*)!(.*)@(.*)/', $match[2], $vhost)){
-				$this->hostmask		= $vhost[0];
-				$this->nick			= $vhost[1];
-				$this->ident		= $vhost[2];
-				$this->host			= $vhost[3];
-			}else
-				$this->nick = $match[2];
-			$this->AigisIRC->setAigisVar("botNick", $this->nick);
-			$this->AigisIRC->getAigisVar("UserIRC")->nickSelf();
+public function ircMessage(MessIRC $MessIRC){
+	$type = $MessIRC->getType();
+	if($type == 'ping')
+		$this->send('PONG :'.$MessIRC->getMessage());
+
+	elseif($type == 'raw'){
+		switch($MessIRC->getRaw()){
+			case 001:
+			$this->AigisBot->setAigisVar("lastRegg", time());
+			// Successful connection.
+			if(preg_match('/Welcome to the (\w*) [\QInternet Relay Chat\E|IRC]* Network (.*)/',
+				$MessIRC->getMessage(), $match)){
+
+				$this->network = $match[1];
+				if(preg_match('/(.*)!(.*)@(.*)/', $match[2], $vhost)){
+					$this->hostmask		= $vhost[0];
+					$this->nick			= $vhost[1];
+					$this->ident		= $vhost[2];
+					$this->host			= $vhost[3];
+				}else
+					$this->nick = $match[2];
+				}
+				$this->AigisBot->consoleSend(
+					"Connected to $this->network as $this->nick.",
+					"ConnIRC", "success");
+				// Set +B (user mode for bots).
+				$this->send("MODE ".$this->nick." +B");
+				// Send successful connection to plugins.
+				if($PlugIRC = $this->AigisBot->getModule('PlugIRC'))
+					$PlugIRC->pluginSendAll('connect', time());
+				break;
+
+			case 005:
+			// Send PROTOCTL for UHNAMES and NAMESX support.
+			$this->send("PROTOCTL UHNAMES");
+			$this->send("PROTOCTL NAMESX");
+			break;
+
+			case 433:
+			$this->attempts++;
+			if(isset($this->nicks[$this->attempts]))
+				$altNick = $this->nicks[$this->attempts];
+			else throw new Exception('All nicks taken');
+			$this->AigisIRC->consoleSend(
+				"Nick is taken. Using alternative nick \"$altNick\".",
+				"ConnIRC", "warning");
+			$this->send("NICK " . $altNick);
+			break;
 		}
-		consoleSend("Connected to $this->network001 as $this->nick.", "ConnIRC", "success");
-		// Set +B (user mode for bots).
-		$this->send("MODE " . $this->nick . " +B");
-		// Identify with NickServ.
-		$this->AigisIRC->nsIdentify();
-		// Send successful connection to plugins.
-		$this->AigisIRC->getAigisVar("PlugIRC")->pluginSendAll("connect", time());
-		break;
+	}
 
-		case 005:
-		// Send PROTOCTL for UHNAMES and NAMESX support.
-		$this->send("PROTOCTL UHNAMES");
-		$this->send("PROTOCTL NAMESX");
-		break;
-
-		case 433:
-		$altNick = $this->AigisIRC->getAigisVar("altNick");
-		consoleSend("Nick is taken. Using alternative nick \"$altNick\".", "ConnIRC", "warning");
-		$this->send("NICK " . $altNick);
-		break;
+	elseif($type == 'nick'){
+		if($MessIRC->getNick() == $this->currentNick)
+			$this->currentNick = $MessIRC->getMessage();
 	}
 }
 
@@ -150,7 +169,7 @@ public function msg($target, $message, $ctcp = null){
 	if(strlen(FontIRC::stripStyles($message)) === 0)
 		return;
 
-	$hostSelf = $this->AigisIRC->getAigisVar("UserIRC")->getSelf()->getFullHost();
+	$hostSelf = "$this->ident@$this->host";
 	$maxlen = 512 - 1 - strlen($this->nick) - 1 - strlen($hostSelf) - 9 - strlen($target) - 2 - 2;
 
 	if(isset($ctcp))
@@ -176,8 +195,10 @@ public function msg($target, $message, $ctcp = null){
 				$stringToSend = "\x01$ctcp $stringToSend\x01";
 
 			$this->send("PRIVMSG $target :$stringToSend");
-			consoleSend(FontIRC::stripStyles("$target -> $string"), "ConnIRC", "send");
-			//$this->AigisIRC->sendToModules("message_sent", "$target :$stringToSend");
+			$this->AigisBot->consoleSend(
+				FontIRC::stripStyles("$target -> $string"),
+				"ConnIRC", "send");
+			$this->AigisBot->sendToModules("ircPrivmsgSent", "$target :$stringToSend");
 			$string = "";
 		}
 	}
@@ -197,7 +218,8 @@ public function notice($target, $message, $ctcp = null){
 	if(strlen(FontIRC::stripStyles($message)) === 0)
 		return;
 
-	$maxlen = 512 - 1 - strlen($this->nick) - 1 - strlen($this->hostmask) - 8 - strlen($target) - 2 - 2;
+	$hostSelf = "$this->ident@$this->host";
+	$maxlen = 512 - 1 - strlen($this->nick) - 1 - strlen($hostSelf) - 8 - strlen($target) - 2 - 2;
 
 	if(isset($ctcp))
 		$maxlen -= (3 + strlen($ctcp));
@@ -221,8 +243,10 @@ public function notice($target, $message, $ctcp = null){
 				$stringToSend = "\x01$ctcp $stringToSend\x01";
 
 			$this->send("NOTICE $target :$stringToSend");
-			consoleSend(FontIRC::stripStyles("[Notice] $target -> $string"), "ConnIRC", "send");
-			//$this->AigisIRC->sendToModules("message_sent", "$target :$stringToSend");
+			$this->AigisBot->consoleSend(
+				FontIRC::stripStyles("[Notice] $target -> $string"),
+				"ConnIRC", "send");
+			$this->AigisBot->sendToModules("ircNoticeSent", "$target :$stringToSend");
 			$string = "";
 		}
 	}
@@ -238,7 +262,7 @@ public function join($channel){
 // ConnIRC::part($channel) - Parts a channel.
 // @param string $channel Channel to part.
 // @param string $reason  Reason to part.
-public function part($channel, $reason = "AigisIRC by LunarMage"){
+public function part($channel, $reason = "AigisBot by LunarMage"){
 	$this->send("PART $channel :$reason");
 }
 
@@ -247,7 +271,7 @@ public function getNetwork(){
 }
 
 public function getNick(){
-	return $this->nick;
+	return $this->currentNick;
 }
 
 }

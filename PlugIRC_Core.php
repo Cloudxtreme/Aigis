@@ -10,7 +10,7 @@ const PLUGIN_DESC = "No description set.";
 
 protected $requireConfig = false;
 
-protected $AigisIRC;
+protected $AigisBot;
 protected $ConnIRC;
 protected $PlugIRC;
 protected $UserIRC = null;
@@ -20,11 +20,11 @@ protected $prefixes = array();
 
 protected $configFile = array();
 
-public function __construct(AigisIRC $AigisIRC){
-	$this->AigisIRC = $AigisIRC;
-	$this->ConnIRC  = $AigisIRC->getAigisVar("ConnIRC");
-	$this->PlugIRC  = $AigisIRC->getAigisVar("PlugIRC");
-	$this->UserIRC  = $AigisIRC->getAigisVar("UserIRC");
+public function __construct(AigisBot $AigisBot){
+	$this->AigisBot = $AigisBot;
+	$this->ConnIRC  = $AigisBot->getAigisVar("ConnIRC");
+	$this->PlugIRC  = $AigisBot->getAigisVar("PlugIRC");
+	$this->UserIRC  = $AigisBot->getAigisVar("UserIRC");
 	$this->prefixes = $this->PlugIRC->getDefaultPrefixes();
 	$this->loadConfig();
 }
@@ -74,7 +74,7 @@ protected function loadConfig(){
 
 	// Hardcoded config file.
 	elseif(file_exists(PLUGIRC_CONFIG.'/'.get_class($this).'.ini'))
-		$this->configFile = parse_ini_file(PLUGIRC_CONFIG.'/'.get_class($this).'.ini', true);
+		$this->configFile = parse_ini_file(PLUGIRC_HOMECFG.'/'.get_class($this).'.ini', true);
 
 	// Throw exception if config file required.
 	elseif($this->requireConfig == TRUE)

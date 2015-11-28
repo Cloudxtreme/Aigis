@@ -9,38 +9,54 @@ if(!chdir(realpath(dirname(__FILE__)))){
 date_default_timezone_set("GMT");
 error_reporting(E_ALL ^ E_STRICT);
 
-// Include core functions.
-include_once "functions.php";
-include_once "AigisIRC.php";
+require_once 'functions.php';
+require_once 'AigisBot.php';
 
-try{
-
-	if(!isset($argv[1]))
-		throw new Exception("No network specified.");
-	$config = AigisIRC::getConfig($argv[1]);
-
-}catch(Exception $e){
-	fwrite(STDERR, $e->getMessage()."\n");
+if(!isset($argv[1])){
+	fwrite(STDERR, "Usage: {$argv[0]} <network>\n");
 	die(1);
 }
+$network = $argv[1];
 
-$AigisIRC = new AigisIRC($config['nick'], $config['network'], $config['altNick']);
+try{
+	// Start Aigis.
+	$AigisBot = new AigisBot($network);
 
-// Set connection info and plugin manager.
-$ConnIRC = $AigisIRC->setConnInfo($config['serverHost'], $config['serverPort']);
-$PlugIRC = $AigisIRC->getAigisVar("PlugIRC");
+	// Load modules.
+	$ConnIRC = $AigisBot->loadModule('ConnIRC');
+	$PlugIRC = $AigisBot->loadModule('PlugIRC');
+	$UserIRC = $AigisBot->loadModule('UserIRC');
+	$MIM     = $AigisBot->loadModule('MessIRCManager');
 
-// NickServ
-if(isset($config['ConnIRC_NickServ']))
-	$AigisIRC->setAigisVar("nsPass", $config['ConnIRC_NickServ']);
-// Load plugins
-$PlugIRC->setPrefix($config['PlugIRC_defaultPrefixes']);
-foreach($config['PlugIRC_plugins'] as $plugin){
-	$PlugIRC->loadPlugin($plugin);
+	// Set error handler.
+	set_error_handler(array($AigisBot, 'errorHandler'));
+}catch(Exception $e){
+	fwrite(STDERR, $e->getMessage()."\n");
+	exit(2);
 }
-$PlugIRC->pluginSendAll("AigisStart", time());
-$ConnIRC->connect();
-
+// IRC loop.
+$lastMsg = $lastConn = $lastPing = 0;
 while(true){
-	$AigisIRC->loopCycle();
+	if(!$ConnIRC->connected())
+		$ConnIRC->connect();
+
+	// Parse IRC messages.
+	if($data = $ConnIRC->read()){
+		$lastMsg = time();
+		$MessIRC = $MIM->getMessage($data);
+		$AigisBot->verboseSend($data, 'IRC');
+
+		$AigisBot->sendToModules('ircMessage', $MessIRC);
+	}
+
+	// Ping timeouts.
+	$time = time();
+	if($time - $lastMsg >= ConnIRC::ACTIVITY_TIMEOUT &&
+	$time - $lastConn >= ConnIRC::RECONNECT_DELAY){
+		$AigisBot->consoleSend('Disconnected for ping timeout.', 'IRC', '!');
+	}
+
+	// Send pings after a small amount of time.
+	if($time - $lastPing >= ConnIRC::PING_FREQUENCY)
+		$ConnIRC->send("PING :AigisBot");
 }

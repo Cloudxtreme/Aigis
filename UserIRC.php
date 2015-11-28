@@ -5,21 +5,22 @@ require_once "UserIRC_Channel.php";
 
 class UserIRC{
 
-// UserIRC
-// Part of AigisIRC (https://github.com/Joaquin-V/AigisIRC)
+	// UserIRC
+	// Part of AigisBot (https://github.com/Joaquin-V/AigisBot)
 
-private $AigisIRC = null;
+	private $AigisBot = null;
 
-private $users = array();
-private $self = null;
-private $channels = array();
-private $PMchan = null;
+	private $users = array();
+	private $self = null;
+	private $channels = array();
+	private $PMchan = null;
 
-public function __construct(AigisIRC $AigisIRC, $nickSelf){
-$this->AigisIRC = $AigisIRC;
-// Start instance of self user.
-$this->self = new UserIRC_User($nickSelf . "!AigisIRC@lunaramge.com.ar");
-}
+	public function __construct(AigisBot $AigisBot){
+	$this->AigisBot = $AigisBot;
+	// Start instance of self user.
+	$nick = $AigisBot->getConfig()['Auth']['nicks'][0];
+	$this->self = new UserIRC_User("$nick!AigisBot@lunaramge.com.ar");
+	}
 
 // UserIRC::getUser($address) - Gets the user object of an address (or makes one if non-existant.)
 // @param $address string User's address.
@@ -55,10 +56,25 @@ public function getSelf(){
 	return $this->self;
 }
 
+public function ircMessage(MessIRC $MessIRC){
+	$type = $MessIRC->getType();
+	if(method_exists($this, $type))
+		$this->$type($MessIRC);
+}
+
 // Parse server messages.
 public function raw(MessIRC $MessIRC){
 	$raw = $MessIRC->getRaw();
 	switch($raw){
+		case 001:
+			if(preg_match('/Welcome to the (\w*) [\QInternet Relay Chat\E|IRC]* Network (.*)/',
+			$MessIRC->getMessage(), $match)){
+				if(preg_match('/(.*)!(.*)@(.*)/', $match[2], $vhost)){
+					$this->self->setNick($vhost[1]);
+				}
+			}
+		break;
+
 		case 353:
 			$params = $MessIRC->getParams();
 			array_shift($params);
@@ -143,7 +159,7 @@ public function kick(MessIRC $MessIRC){
 	if($kicked == $this->nickSelf()){
 		// Uncomment for automatic rejoin on kick.
 		// consoleSend("Kicked from ".$MessIRC->getReplyTarget()." by ".$MessIRC->getNick().". Reason: ".$reason, "ConnIRC", "warning");
-		// $this->AigisIRC->getAigisVar("ConnIRC")->join($MessIRC->getReplyTarget());
+		// $this->AigisBot->getAigisVar("ConnIRC")->join($MessIRC->getReplyTarget());
 	}
 	$user = $this->getUser($kicked);
 	$chan = $this->getChannel($MessIRC->getReplyTarget());
@@ -195,7 +211,7 @@ public function mode(MessIRC $MessIRC){
 }
 
 public function nickSelf(){
-	$nick = $this->AigisIRC->getAigisVar("botNick");
+	$nick = $this->AigisBot->getAigisVar("botNick");
 	$this->self->setNick($nick);
 	return $nick;
 }

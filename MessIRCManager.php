@@ -5,13 +5,13 @@ require_once "MessIRC.php";
 
 class MessIRCManager{
 
-private $AigisIRC;
+private $AigisBot;
 private $SelfNick;
 private $lastMessage;
 
-public function __construct(AigisIRC $AigisIRC, $SelfNick){
-	$this->AigisIRC = $AigisIRC;
-	$this->SelfNick = $SelfNick;
+public function __construct(AigisBot $AigisBot){
+	$this->AigisBot = $AigisBot;
+	$this->SelfNick = $AigisBot->getConfig()['Auth']['nicks'][0];
 }
 
 public function getMessage($data){
