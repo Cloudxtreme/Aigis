@@ -146,7 +146,7 @@ class AigisURL extends PlugIRC_Core{
 					$nicklist = $this->UserIRC->getChannel($MessIRC->getReplyTarget())->nicklist();
 					$ncount = count($nicklist);
 
-					if(isset($nicklist)) {
+					if(isset($nicklist) && $ncount > 0) {
 						while ($count < 1) {
 							$nick = $nicklist[mt_rand(0, $ncount - 1)];
 							$count = count($this->urldb->getURLs($nick));
