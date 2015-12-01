@@ -16,14 +16,15 @@ class AigisURL extends PlugIRC_Core{
 	protected $flags = array(
 		'add'     => array('-a', '--add', '-s', '--set'),
 		'delete'  => array('-d', '--delete'),
-		'replace' => array('-r', '--replace') );
+		'replace' => array('-r', '--replace'),
+		'random' => array('-?', '--random'));
 
 	protected $messages = array(
 		'none'    => '%s doesn\'t have any %s saved.',
 		'add'     => '%s successfully added.',
 		'delete'  => '%s removed.',
 		'replace' => '%s replaced.',
-		'usage'   => 'Usage: %s [--add urls...] [--delete ids...] [--replace id url]'
+		'usage'   => 'Usage: %s [--add urls...] [--delete ids...] [--replace id url] [--random user(optional)]'
 	);
 
 	protected $words = array(
@@ -122,6 +123,47 @@ class AigisURL extends PlugIRC_Core{
 				$this->ConnIRC->msg($MessIRC->getReplyTarget(),
 					sprintf($this->messages['replace'],
 						ucfirst($this->words['singular'])));
+			}
+
+			// Random URL.
+			elseif(in_array($flag, $flaglist['random'])){
+				$argc = count($argv);
+				if(isset($argv[0]) && $argc < 2){
+					$nick = $argv[0];
+					$URLs = $this->urldb->getURLs($nick);
+					$count = count($URLs);
+
+					if($count < 1){
+						throw new Exception("User has no {$this->words['plural']}");
+					}
+					else{
+						$this->ConnIRC->msg($MessIRC->getReplyTarget(),
+							$this->getReply($nick, mt_rand(0, $count - 1)));
+					}
+				}
+				elseif($argc < 1){
+					$count = 0;
+					$nicklist = $this->UserIRC->getChannel($MessIRC->getReplyTarget())->nicklist();
+					$ncount = count($nicklist);
+
+					if(isset($nicklist)) {
+						while ($count < 1) {
+							$nick = $nicklist[mt_rand(0, $ncount - 1)];
+							$count = count($this->urldb->getURLs($nick));
+							if($count > 0)
+							{
+								$this->ConnIRC->msg($MessIRC->getReplyTarget(),
+										$this->getReply($nick, mt_rand(0, $count - 1)));
+							}
+						}
+					}
+					else{
+						throw new Exception("Could not obtain channel nicklist.");
+					}
+				}
+				else{
+					throw new Exception("Please provide a user name or no argument.");
+				}
 			}
 
 			// Unknown flag.
